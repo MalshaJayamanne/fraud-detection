@@ -11,17 +11,21 @@ import os
 import time
 
 # =====================================================
-# 🧠 LOAD MODEL (STREAMLIT CLOUD SAFE)
+# 🧠 SAFE MODEL LOADING (FIXED)
 # =====================================================
 
-MODEL_PATH = "backend/fraud_model_final.pkl"
+MODEL_PATH = "fraud_model_final.pkl"
 
-if not os.path.exists(MODEL_PATH):
-    st.error("❌ Model file not found. Please upload fraud_model_final.pkl to repo root.")
-    st.stop()
+@st.cache_resource
+def load_model():
+    if not os.path.exists(MODEL_PATH):
+        st.error("❌ Model file missing in root directory")
+        st.stop()
 
-with open(MODEL_PATH, "rb") as f:
-    model_data = pickle.load(f)
+    with open(MODEL_PATH, "rb") as f:
+        return pickle.load(f)
+
+model_data = load_model()
 
 model = model_data["model"]
 threshold = model_data["threshold"]
@@ -44,7 +48,7 @@ def call_api(features):
         return {"error": "API not reachable"}
 
 # =====================================================
-# MENU
+# UI MENU
 # =====================================================
 
 menu = st.sidebar.radio(
@@ -61,17 +65,17 @@ if menu == "Dashboard":
 
     st.subheader("System Overview")
 
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Transactions", "1.2M")
-    col2.metric("Fraud Rate", "0.42%")
-    col3.metric("Model Accuracy", "99.3%")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Transactions", "1.2M")
+    c2.metric("Fraud Rate", "0.42%")
+    c3.metric("Model Accuracy", "99.3%")
 
     df = pd.DataFrame({
         "hour": range(24),
         "fraud": np.random.randint(0, 50, 24)
     })
 
-    fig = px.line(df, x="hour", y="fraud", title="Fraud Trend (24H)")
+    fig = px.line(df, x="hour", y="fraud", title="Fraud Trend")
     st.plotly_chart(fig, use_container_width=True)
 
 # =====================================================
