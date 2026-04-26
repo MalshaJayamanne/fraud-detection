@@ -11,10 +11,14 @@ import os
 import time
 
 # =====================================================
-# 🧠 LOAD MODEL (FIXED PATH)
+# 🧠 LOAD MODEL (STREAMLIT CLOUD SAFE)
 # =====================================================
 
 MODEL_PATH = "backend/fraud_model_final.pkl"
+
+if not os.path.exists(MODEL_PATH):
+    st.error("❌ Model file not found. Please upload fraud_model_final.pkl to repo root.")
+    st.stop()
 
 with open(MODEL_PATH, "rb") as f:
     model_data = pickle.load(f)
@@ -40,7 +44,7 @@ def call_api(features):
         return {"error": "API not reachable"}
 
 # =====================================================
-# UI MENU
+# MENU
 # =====================================================
 
 menu = st.sidebar.radio(
@@ -67,7 +71,7 @@ if menu == "Dashboard":
         "fraud": np.random.randint(0, 50, 24)
     })
 
-    fig = px.line(df, x="hour", y="fraud")
+    fig = px.line(df, x="hour", y="fraud", title="Fraud Trend (24H)")
     st.plotly_chart(fig, use_container_width=True)
 
 # =====================================================
@@ -149,6 +153,9 @@ elif menu == "Batch Scan":
             df["Prediction"] = preds
 
             st.success("Completed")
+
+            fig = px.histogram(df, x="Fraud Probability")
+            st.plotly_chart(fig)
 
             st.dataframe(df.head())
 
