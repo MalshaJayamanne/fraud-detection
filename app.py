@@ -6,9 +6,30 @@ import plotly.express as px
 import plotly.graph_objects as go
 import shap
 import matplotlib.pyplot as plt
+import pickle
+import os
 import time
 
-# ================= API =================
+# =====================================================
+# 🧠 LOAD MODEL (FIXED PATH)
+# =====================================================
+
+MODEL_PATH = "backend/fraud_model_final.pkl"
+
+with open(MODEL_PATH, "rb") as f:
+    model_data = pickle.load(f)
+
+model = model_data["model"]
+threshold = model_data["threshold"]
+
+explainer = shap.TreeExplainer(model)
+
+# =====================================================
+# CONFIG
+# =====================================================
+
+st.set_page_config(page_title="Fraud AI System", layout="wide")
+
 API_URL = "http://127.0.0.1:8000/predict"
 
 def call_api(features):
@@ -18,15 +39,9 @@ def call_api(features):
     except:
         return {"error": "API not reachable"}
 
-# ================= SHAP SETUP =================
-import pickle
-
-model_data = pickle.load(open("../backend/model.pkl", "rb"))
-model = model_data["model"]
-explainer = shap.TreeExplainer(model)
-
-# ================= UI =================
-st.set_page_config(page_title="Fraud AI System", layout="wide")
+# =====================================================
+# UI MENU
+# =====================================================
 
 menu = st.sidebar.radio(
     "Control Panel",
@@ -40,19 +55,19 @@ st.title("🏦 Fraud Detection Intelligence System")
 # =====================================================
 if menu == "Dashboard":
 
-    st.subheader("📊 System Overview")
+    st.subheader("System Overview")
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Transactions", "1.2M")
-    c2.metric("Fraud Rate", "0.42%")
-    c3.metric("Model Accuracy", "99.3%")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Transactions", "1.2M")
+    col2.metric("Fraud Rate", "0.42%")
+    col3.metric("Model Accuracy", "99.3%")
 
     df = pd.DataFrame({
         "hour": range(24),
         "fraud": np.random.randint(0, 50, 24)
     })
 
-    fig = px.line(df, x="hour", y="fraud", title="Fraud Trend")
+    fig = px.line(df, x="hour", y="fraud")
     st.plotly_chart(fig, use_container_width=True)
 
 # =====================================================
@@ -60,7 +75,7 @@ if menu == "Dashboard":
 # =====================================================
 elif menu == "Manual Check":
 
-    st.subheader("🔍 Transaction Analysis")
+    st.subheader("Transaction Analysis")
 
     features = []
 
@@ -98,30 +113,18 @@ elif menu == "Manual Check":
             else:
                 st.success(pred)
 
-            fig = go.Figure(go.Indicator(
-                mode="gauge+number",
-                value=prob * 100,
-                title={'text': "Risk Score"}
-            ))
-            st.plotly_chart(fig)
-
 # =====================================================
 # 📂 BATCH SCAN
 # =====================================================
 elif menu == "Batch Scan":
 
-    st.subheader("📂 Bulk Fraud Detection")
+    st.subheader("Bulk Fraud Detection")
 
     file = st.file_uploader("Upload CSV", type="csv")
 
     if file:
 
         df = pd.read_csv(file)
-
-        if len(df) > 1000:
-            df = df.head(1000)
-            st.warning("Using first 1000 rows")
-
         st.dataframe(df.head())
 
         if st.button("Run Detection"):
@@ -145,10 +148,7 @@ elif menu == "Batch Scan":
             df["Fraud Probability"] = probs
             df["Prediction"] = preds
 
-            st.success("Done")
-
-            fig = px.histogram(df, x="Fraud Probability")
-            st.plotly_chart(fig)
+            st.success("Completed")
 
             st.dataframe(df.head())
 
@@ -157,39 +157,28 @@ elif menu == "Batch Scan":
 # =====================================================
 elif menu == "Explain AI":
 
-    st.subheader("🧠 SHAP Explainability Dashboard")
+    st.subheader("SHAP Explainability Dashboard")
 
     sample = np.random.rand(1, 29)
 
     shap_values = explainer.shap_values(sample)
 
-    st.write("### Global Feature Impact")
+    st.write("Feature Impact")
 
     fig, ax = plt.subplots()
     shap.summary_plot(shap_values, sample, show=False)
     st.pyplot(fig)
 
-    st.write("### Single Prediction Explanation")
-
-    fig2, ax2 = plt.subplots()
-    shap.force_plot(
-        explainer.expected_value,
-        shap_values[0],
-        sample,
-        matplotlib=True
-    )
-    st.pyplot(fig2)
-
 # =====================================================
-# 📡 LIVE STREAMING
+# 📡 LIVE STREAM
 # =====================================================
 elif menu == "Live Stream":
 
-    st.subheader("📡 Real-Time Fraud Detection")
+    st.subheader("Real-Time Fraud Stream")
 
     placeholder = st.empty()
 
-    for i in range(30):
+    for i in range(20):
 
         features = list(np.random.rand(29))
         result = call_api(features)
@@ -201,18 +190,8 @@ elif menu == "Live Stream":
             if "fraud_probability" in result:
 
                 prob = result["fraud_probability"]
-                pred = result["prediction"]
 
-                st.metric("Fraud Probability", f"{prob:.3f}")
-
-                if "FRAUD" in pred:
-                    st.error(pred)
-                else:
-                    st.success(pred)
-
+                st.metric("Risk", f"{prob:.3f}")
                 st.progress(prob)
-
-            else:
-                st.warning("API error")
 
         time.sleep(1)
