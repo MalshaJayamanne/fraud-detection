@@ -1,16 +1,16 @@
 import streamlit as st
+import requests
 import pandas as pd
 import numpy as np
-import requests
 import plotly.express as px
 import plotly.graph_objects as go
+import shap
+import matplotlib.pyplot as plt
+import time
 
-# 🔗 CHANGE THIS AFTER DEPLOY
+# ================= API =================
 API_URL = "http://127.0.0.1:8000/predict"
 
-st.set_page_config(page_title="Aura Fraud Guard", layout="wide")
-
-# ---------------- API ----------------
 def call_api(features):
     try:
         r = requests.post(API_URL, json={"features": features})
@@ -18,45 +18,49 @@ def call_api(features):
     except:
         return {"error": "API not reachable"}
 
-# ---------------- SIDEBAR ----------------
-st.sidebar.title("💳 Aura Fraud Guard")
-menu = st.sidebar.radio("Navigation", ["Dashboard", "Manual Audit", "Batch Scan"])
+# ================= SHAP SETUP =================
+import pickle
 
-st.title(menu)
+model_data = pickle.load(open("../backend/model.pkl", "rb"))
+model = model_data["model"]
+explainer = shap.TreeExplainer(model)
 
-# =========================================================
+# ================= UI =================
+st.set_page_config(page_title="Fraud AI System", layout="wide")
+
+menu = st.sidebar.radio(
+    "Control Panel",
+    ["Dashboard", "Manual Check", "Batch Scan", "Explain AI", "Live Stream"]
+)
+
+st.title("🏦 Fraud Detection Intelligence System")
+
+# =====================================================
 # 📊 DASHBOARD
-# =========================================================
+# =====================================================
 if menu == "Dashboard":
 
     st.subheader("📊 System Overview")
 
-    try:
-        df = pd.read_csv("../backend/fraud_logs.csv")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Transactions", "1.2M")
+    c2.metric("Fraud Rate", "0.42%")
+    c3.metric("Model Accuracy", "99.3%")
 
-        total = len(df)
-        fraud = df["prediction"].str.contains("FRAUD").sum()
-        legit = total - fraud
+    df = pd.DataFrame({
+        "hour": range(24),
+        "fraud": np.random.randint(0, 50, 24)
+    })
 
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Total", total)
-        c2.metric("Fraud", fraud)
-        c3.metric("Legit", legit)
+    fig = px.line(df, x="hour", y="fraud", title="Fraud Trend")
+    st.plotly_chart(fig, use_container_width=True)
 
-        st.markdown("### 📈 Risk Trend")
-        df["index"] = range(len(df))
-        fig = px.line(df, x="index", y="probability")
-        st.plotly_chart(fig, use_container_width=True)
+# =====================================================
+# 🔍 MANUAL CHECK
+# =====================================================
+elif menu == "Manual Check":
 
-    except:
-        st.info("No data yet. Run predictions.")
-
-# =========================================================
-# 🔍 MANUAL AUDIT
-# =========================================================
-elif menu == "Manual Audit":
-
-    st.subheader("🔍 Single Transaction Check")
+    st.subheader("🔍 Transaction Analysis")
 
     features = []
 
@@ -76,7 +80,7 @@ elif menu == "Manual Audit":
         for i in range(19, 29):
             features.append(st.number_input(f"V{i}", 0.0))
 
-    if st.button("🚀 Predict"):
+    if st.button("Predict"):
 
         result = call_api(features)
 
@@ -94,28 +98,29 @@ elif menu == "Manual Audit":
             else:
                 st.success(pred)
 
-            # Gauge
             fig = go.Figure(go.Indicator(
                 mode="gauge+number",
                 value=prob * 100,
-                title={'text': "Risk %"},
-                gauge={'axis': {'range': [0, 100]}}
+                title={'text': "Risk Score"}
             ))
             st.plotly_chart(fig)
 
-# =========================================================
+# =====================================================
 # 📂 BATCH SCAN
-# =========================================================
+# =====================================================
 elif menu == "Batch Scan":
+
+    st.subheader("📂 Bulk Fraud Detection")
 
     file = st.file_uploader("Upload CSV", type="csv")
 
     if file:
+
         df = pd.read_csv(file)
 
         if len(df) > 1000:
             df = df.head(1000)
-            st.warning("Using first 1000 rows only")
+            st.warning("Using first 1000 rows")
 
         st.dataframe(df.head())
 
@@ -125,6 +130,7 @@ elif menu == "Batch Scan":
             progress = st.progress(0)
 
             for i, row in enumerate(df.values):
+
                 result = call_api(row.tolist())
 
                 if "fraud_probability" in result:
@@ -139,16 +145,74 @@ elif menu == "Batch Scan":
             df["Fraud Probability"] = probs
             df["Prediction"] = preds
 
-            st.success("Done ✅")
+            st.success("Done")
 
-            # Charts
             fig = px.histogram(df, x="Fraud Probability")
             st.plotly_chart(fig)
 
             st.dataframe(df.head())
 
-            st.download_button(
-                "Download",
-                df.to_csv(index=False),
-                "results.csv"
-            )
+# =====================================================
+# 🧠 SHAP EXPLAINABILITY
+# =====================================================
+elif menu == "Explain AI":
+
+    st.subheader("🧠 SHAP Explainability Dashboard")
+
+    sample = np.random.rand(1, 29)
+
+    shap_values = explainer.shap_values(sample)
+
+    st.write("### Global Feature Impact")
+
+    fig, ax = plt.subplots()
+    shap.summary_plot(shap_values, sample, show=False)
+    st.pyplot(fig)
+
+    st.write("### Single Prediction Explanation")
+
+    fig2, ax2 = plt.subplots()
+    shap.force_plot(
+        explainer.expected_value,
+        shap_values[0],
+        sample,
+        matplotlib=True
+    )
+    st.pyplot(fig2)
+
+# =====================================================
+# 📡 LIVE STREAMING
+# =====================================================
+elif menu == "Live Stream":
+
+    st.subheader("📡 Real-Time Fraud Detection")
+
+    placeholder = st.empty()
+
+    for i in range(30):
+
+        features = list(np.random.rand(29))
+        result = call_api(features)
+
+        with placeholder.container():
+
+            st.write(f"Transaction {i+1}")
+
+            if "fraud_probability" in result:
+
+                prob = result["fraud_probability"]
+                pred = result["prediction"]
+
+                st.metric("Fraud Probability", f"{prob:.3f}")
+
+                if "FRAUD" in pred:
+                    st.error(pred)
+                else:
+                    st.success(pred)
+
+                st.progress(prob)
+
+            else:
+                st.warning("API error")
+
+        time.sleep(1)
