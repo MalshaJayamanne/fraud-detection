@@ -1,235 +1,279 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import requests
+import pickle
 import plotly.express as px
 import plotly.graph_objects as go
 
-# 🔗 CHANGE AFTER DEPLOY
-API_URL = "http://127.0.0.1:8000/predict"
+# ---------------------------------------------------------
+# PAGE CONFIG
+# ---------------------------------------------------------
+st.set_page_config(
+    page_title="Fraud Detection System",
+    layout="wide"
+)
 
-st.set_page_config(page_title="Aura Fraud Guard", layout="wide")
+# ---------------------------------------------------------
+# LOAD MODEL
+# ---------------------------------------------------------
+@st.cache_resource
+def load_model():
+    with open("fraud_model_final.pkl", "rb") as f:
+        data = pickle.load(f)
+    return data["model"], data["threshold"]
 
-# =========================================================
-# ⚡ CACHE API CALLS (IMPORTANT)
-# =========================================================
-@st.cache_data(ttl=60)
-def cached_api_call(features_tuple):
-    try:
-        r = requests.post(API_URL, json={"features": list(features_tuple)})
-        return r.json()
-    except:
-        return {"error": "API not reachable"}
+model, threshold = load_model()
 
-def call_api(features):
-    return cached_api_call(tuple(features))
+# ---------------------------------------------------------
+# PREDICT FUNCTION
+# ---------------------------------------------------------
+@st.cache_data
+def predict(features_tuple):
+    arr = np.array(features_tuple).reshape(1, -1)
+    prob = model.predict_proba(arr)[0][1]
+    pred = "FRAUD" if prob > threshold else "LEGIT"
+    return float(prob), pred
 
-
-# =========================================================
+# ---------------------------------------------------------
 # SIDEBAR
-# =========================================================
-st.sidebar.title("💳 Aura Fraud Guard")
-menu = st.sidebar.radio("Navigation", ["Dashboard", "Manual Audit", "Batch Scan"])
+# ---------------------------------------------------------
+st.sidebar.title("Fraud Detection System")
 
+menu = st.sidebar.radio(
+    "Navigation",
+    ["Dashboard", "Single Prediction", "Batch Processing"]
+)
 
-# =========================================================
-# HEADER
-# =========================================================
-st.title(menu)
+st.title("Fraud Detection System")
 
-with st.expander("📘 How to Use"):
+with st.expander("How to Use"):
     st.markdown("""
-1. Use **Manual Audit** for single transaction  
-2. Use **Batch Scan** for CSV analysis  
-3. Use **Dashboard** to view trends  
+- Dashboard: system overview  
+- Single Prediction: analyze one transaction  
+- Batch Processing: upload CSV file  
 
-💡 Tips:
-- High Amount → higher risk  
-- V14 negative → strong fraud signal  
+Model expects 30 features:
+Amount, Time, V1–V28
 """)
 
-
 # =========================================================
-# 📊 DASHBOARD
+# DASHBOARD (UPDATED PROFESSIONAL VERSION)
 # =========================================================
 if menu == "Dashboard":
 
-    st.subheader("📊 System Overview")
+    st.subheader("System Overview")
 
+    st.markdown("""
+### Fraud Detection System Overview
+
+This system performs **offline transaction anomaly detection** using structured financial data.
+
+It analyzes credit card transactions with **30 features**:
+- Amount
+- Time
+- V1 – V28 (anonymized behavioral signals)
+
+---
+
+### Fraud Detection Scope
+
+The model is designed for **credit card fraud detection**, including:
+
+- Card-not-present fraud (online transactions)
+- Stolen or compromised card usage
+- Abnormal spending behavior patterns
+- Unusual transaction timing or velocity
+
+---
+
+### Model Behavior
+
+The system uses a **supervised machine learning model (XGBoost)** trained on historical labeled data.
+
+It learns:
+- Legitimate transaction patterns
+- Fraudulent transaction patterns
+
+Then outputs:
+- Fraud probability score (0 to 1)
+- Final classification (LEGIT / FRAUD)
+
+---
+
+### Important Note
+
+This is a **risk scoring system**, not a rule-based banking system.
+It predicts probability of fraud based on learned statistical patterns.
+""")
+
+    # -----------------------------------------------------
+    # MODEL INFO CARD
+    # -----------------------------------------------------
+    st.markdown("### Model Information")
+
+    st.info(f"""
+Model Type: XGBoost Classifier  
+Problem Type: Binary Classification  
+Features: 30 (Amount, Time, V1–V28)  
+Threshold: {threshold:.3f}  
+Output: Fraud Probability + Decision  
+""")
+
+    # -----------------------------------------------------
+    # LOG ANALYSIS
+    # -----------------------------------------------------
     try:
-        df = pd.read_csv("../backend/fraud_logs.csv")
+        df = pd.read_csv("fraud_logs.csv")
 
         total = len(df)
-        fraud = df["prediction"].str.contains("FRAUD").sum()
+        fraud = df["Prediction"].str.contains("FRAUD").sum()
         legit = total - fraud
 
         c1, c2, c3 = st.columns(3)
-        c1.metric("Total", total)
-        c2.metric("Fraud", fraud)
-        c3.metric("Legit", legit)
+        c1.metric("Total Transactions", total)
+        c2.metric("Fraud Cases", fraud)
+        c3.metric("Legit Cases", legit)
 
-        st.markdown("### 📈 Risk Trend")
+        df["Index"] = range(len(df))
 
-        df["index"] = range(len(df))
-        fig = px.line(df, x="index", y="probability")
+        fig = px.line(df, x="Index", y="Probability", title="Fraud Risk Trend")
         st.plotly_chart(fig, use_container_width=True)
 
     except:
-        st.info("No data yet. Run predictions first.")
-
+        st.info("No prediction logs available yet.")
 
 # =========================================================
-# 🔍 MANUAL AUDIT
+# SINGLE PREDICTION
 # =========================================================
-elif menu == "Manual Audit":
+elif menu == "Single Prediction":
 
-    st.subheader("🔍 Single Transaction Check")
-
-    # Quick presets
-    colA, colB = st.columns(2)
-
-    with colA:
-        if st.button("⚡ Fraud Example"):
-            st.session_state["preset"] = "fraud"
-
-    with colB:
-        if st.button("✅ Legit Example"):
-            st.session_state["preset"] = "legit"
-
-    preset = st.session_state.get("preset", None)
-
-    def get_val(default, fraud_val=None):
-        if preset == "fraud" and fraud_val is not None:
-            return fraud_val
-        return default
+    st.subheader("Transaction Analysis")
 
     features = []
 
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        features.append(st.number_input(
-            "Amount 💰", value=get_val(0.0, 2500.0),
-            help="Transaction amount"
-        ))
-
-        features.append(st.number_input(
-            "Time ⏱️", value=get_val(0.0, 10000.0),
-            help="Time from first transaction"
-        ))
-
+        features.append(st.number_input("Amount", 0.0))
+        features.append(st.number_input("Time", 0.0))
         for i in range(1, 9):
-            features.append(st.number_input(f"V{i}", value=0.0))
+            features.append(st.number_input(f"V{i}", 0.0))
 
     with col2:
         for i in range(9, 19):
-            if i == 14:
-                features.append(st.number_input(
-                    "V14 🔥 (Fraud Sensitive)",
-                    value=get_val(0.0, -10.0),
-                    help="Strong fraud indicator"
-                ))
-            else:
-                features.append(st.number_input(f"V{i}", value=0.0))
+            features.append(st.number_input(f"V{i}", 0.0))
 
     with col3:
         for i in range(19, 29):
-            features.append(st.number_input(f"V{i}", value=0.0))
+            features.append(st.number_input(f"V{i}", 0.0))
 
-    if st.button("🚀 Predict"):
+    if st.button("Run Prediction"):
 
-        if len(features) != 30:
-            st.error("Invalid input size")
-            st.stop()
+        prob, pred = predict(tuple(features))
 
-        result = call_api(features)
+        c1, c2 = st.columns(2)
 
-        if "error" in result:
-            st.error(result["error"])
-        else:
-            prob = result["fraud_probability"]
-            pred = result["prediction"]
-
-            st.metric("Fraud Probability", f"{prob:.4f}")
+        with c1:
+            st.metric("Fraud Probability", round(prob, 4))
             st.progress(prob)
 
-            # Risk level
-            if prob < 0.3:
-                st.success("🟢 Low Risk")
-            elif prob < 0.7:
-                st.warning("🟡 Medium Risk")
+            if pred == "FRAUD":
+                st.error("Fraud Detected")
             else:
-                st.error("🔴 High Risk")
+                st.success("Transaction is Legitimate")
 
-            if "FRAUD" in pred:
-                st.error(pred)
-            else:
-                st.success(pred)
-
-            # Gauge
+        with c2:
             fig = go.Figure(go.Indicator(
                 mode="gauge+number",
                 value=prob * 100,
-                title={'text': "Fraud Risk %"},
-                gauge={
-                    'axis': {'range': [0, 100]},
-                    'steps': [
-                        {'range': [0, 30], 'color': "green"},
-                        {'range': [30, 70], 'color': "yellow"},
-                        {'range': [70, 100], 'color': "red"},
-                    ],
-                }
+                title={"text": "Risk Score"},
+                gauge={"axis": {"range": [0, 100]}}
             ))
             st.plotly_chart(fig, use_container_width=True)
 
+        # LOG
+        log = pd.DataFrame([{
+            "Probability": prob,
+            "Prediction": pred
+        }])
+
+        try:
+            old = pd.read_csv("fraud_logs.csv")
+            updated = pd.concat([old, log], ignore_index=True)
+        except:
+            updated = log
+
+        updated.to_csv("fraud_logs.csv", index=False)
 
 # =========================================================
-# 📂 BATCH SCAN
+# BATCH PROCESSING (OPTIMIZED)
 # =========================================================
-elif menu == "Batch Scan":
+elif menu == "Batch Processing":
 
-    st.subheader("📂 Bulk Fraud Detection")
+    st.subheader("Bulk Transaction Analysis")
 
     file = st.file_uploader("Upload CSV", type="csv")
 
     if file:
+
         df = pd.read_csv(file)
 
-        if len(df) > 1000:
-            df = df.head(1000)
-            st.warning("Using first 1000 rows only")
+        st.write("Original Dataset Shape:", df.shape)
+
+        # -----------------------------------------------------
+        # LIMIT DATA FOR PERFORMANCE (IMPORTANT FIX)
+        # -----------------------------------------------------
+        MAX_SAMPLES = 1500
+
+        if len(df) > MAX_SAMPLES:
+            df = df.sample(n=MAX_SAMPLES, random_state=42).reset_index(drop=True)
+            st.warning(f"Dataset too large. Randomly selected {MAX_SAMPLES} records for faster processing.")
+
+        # Ensure only 30 features
+        df = df.iloc[:, :30]
 
         st.dataframe(df.head())
 
-        if st.button("Run Detection"):
+        if st.button("Run Batch Prediction"):
 
-            probs, preds = [], []
+            probabilities = []
+            predictions = []
+
             progress = st.progress(0)
 
-            for i, row in enumerate(df.values):
-                result = call_api(row.tolist())
+            for i, row in df.iterrows():
 
-                if "fraud_probability" in result:
-                    probs.append(result["fraud_probability"])
-                    preds.append(result["prediction"])
-                else:
-                    probs.append(0)
-                    preds.append("ERROR")
+                prob, pred = predict(tuple(row.values))
+
+                probabilities.append(prob)
+                predictions.append(pred)
 
                 progress.progress((i + 1) / len(df))
 
-            df["Fraud Probability"] = probs
-            df["Prediction"] = preds
+            df["Probability"] = probabilities
+            df["Prediction"] = predictions
 
-            st.success("Detection Completed ✅")
+            st.success("Batch Processing Completed")
 
-            fig = px.histogram(df, x="Fraud Probability")
-            st.plotly_chart(fig)
+            # -----------------------------------------------------
+            # VISUALIZATION
+            # -----------------------------------------------------
+            st.markdown("### Fraud Probability Distribution")
 
-            st.dataframe(df.head())
+            fig = px.histogram(
+                df,
+                x="Probability",
+                nbins=30,
+                title="Risk Score Distribution"
+            )
+
+            st.plotly_chart(fig, use_container_width=True)
+
+            st.markdown("### Sample Results")
+            st.dataframe(df.head(20))
 
             st.download_button(
-                "⬇ Download Results",
+                "Download Full Results",
                 df.to_csv(index=False),
-                "results.csv"
+                "fraud_results.csv"
             )

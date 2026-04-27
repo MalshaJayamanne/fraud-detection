@@ -1,5 +1,7 @@
 creditcard.csv
 data.zip
-*.pkl
 backend/__pycache__
 .env
+credit_card.csv
+.gitignore
+
