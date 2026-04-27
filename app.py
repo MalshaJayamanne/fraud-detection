@@ -216,24 +216,58 @@ elif menu == "Batch Processing":
 
     if file:
 
-        df = pd.read_csv(file)
+        df_original = pd.read_csv(file)
 
-        st.write("Original Dataset Shape:", df.shape)
+        st.write("Original Dataset Shape:", df_original.shape)
 
         # -----------------------------------------------------
-        # LIMIT DATA FOR PERFORMANCE (IMPORTANT FIX)
+        # SESSION STATE (store sampled data)
         # -----------------------------------------------------
+        if "batch_df" not in st.session_state:
+            st.session_state.batch_df = None
+
         MAX_SAMPLES = 1500
 
-        if len(df) > MAX_SAMPLES:
-            df = df.sample(n=MAX_SAMPLES, random_state=42).reset_index(drop=True)
-            st.warning(f"Dataset too large. Randomly selected {MAX_SAMPLES} records for faster processing.")
+        # -----------------------------------------------------
+        # REFRESH BUTTON (NEW FEATURE)
+        # -----------------------------------------------------
+        col1, col2 = st.columns([1, 2])
 
-        # Ensure only 30 features
-        df = df.iloc[:, :30]
+        with col1:
+            if st.button("Refresh Sample"):
 
+                df_sample = df_original.copy()
+
+                if len(df_sample) > MAX_SAMPLES:
+                    df_sample = df_sample.sample(n=MAX_SAMPLES, random_state=None).reset_index(drop=True)
+
+                df_sample = df_sample.iloc[:, :30]
+
+                st.session_state.batch_df = df_sample
+
+        # -----------------------------------------------------
+        # INITIAL LOAD (FIRST TIME)
+        # -----------------------------------------------------
+        if st.session_state.batch_df is None:
+
+            df_sample = df_original.copy()
+
+            if len(df_sample) > MAX_SAMPLES:
+                df_sample = df_sample.sample(n=MAX_SAMPLES, random_state=42).reset_index(drop=True)
+                st.info(f"Randomly selected {MAX_SAMPLES} records for processing.")
+
+            df_sample = df_sample.iloc[:, :30]
+
+            st.session_state.batch_df = df_sample
+
+        df = st.session_state.batch_df
+
+        st.markdown("### Sample Preview")
         st.dataframe(df.head())
 
+        # -----------------------------------------------------
+        # RUN PREDICTION
+        # -----------------------------------------------------
         if st.button("Run Batch Prediction"):
 
             probabilities = []
@@ -256,7 +290,7 @@ elif menu == "Batch Processing":
             st.success("Batch Processing Completed")
 
             # -----------------------------------------------------
-            # VISUALIZATION
+            # CHARTS
             # -----------------------------------------------------
             st.markdown("### Fraud Probability Distribution")
 
@@ -270,10 +304,11 @@ elif menu == "Batch Processing":
             st.plotly_chart(fig, use_container_width=True)
 
             st.markdown("### Sample Results")
+
             st.dataframe(df.head(20))
 
             st.download_button(
-                "Download Full Results",
+                "Download Results",
                 df.to_csv(index=False),
                 "fraud_results.csv"
             )
