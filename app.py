@@ -36,7 +36,7 @@ def predict(features):
     return float(prob), pred
 
 # =========================================================
-# RISK LOGIC
+# RISK LEVEL
 # =========================================================
 def get_risk(prob):
     if prob < 0.3:
@@ -47,19 +47,13 @@ def get_risk(prob):
         return "HIGH", "#ef4444"
 
 # =========================================================
-# UPDATED DEMO (better separation)
+# DEMO SAMPLE
 # =========================================================
-def demo_low():
-    return [20, 12000] + [0.05]*28
-
-def demo_medium():
-    return [300, 45000] + [0.6]*28
-
-def demo_high():
-    return [950, 90000] + [-2.0]*28
+def demo_sample():
+    return [250, 35000] + [0.3]*28
 
 # =========================================================
-# UI STYLE (UNCHANGED THEME)
+# STYLE
 # =========================================================
 st.markdown("""
 <style>
@@ -123,29 +117,47 @@ if menu == "Dashboard":
         c3.metric("Legit", legit)
         c4.metric("Avg Risk", f"{avg_risk:.3f}")
 
-        # ================= LOG GRAPH =================
         df_log["Index"] = range(len(df_log))
 
-        fig = px.line(
-            df_log,
-            x="Index",
-            y="Probability",
-            title="Fraud Risk Trend"
-        )
-
+        fig = px.line(df_log, x="Index", y="Probability", title="Fraud Risk Trend")
         st.plotly_chart(fig, use_container_width=True)
 
     except:
         st.info("No logs available yet")
 
-    # ================= MODEL INFO BUTTON =================
+    # =====================================================
+    # MODEL INFO BUTTON
+    # =====================================================
     if st.button("Model Information"):
         st.info("""
-        XGBoost Classifier  
-        30 features used  
-        Detects credit card fraud using anomaly patterns  
-        Output: Fraud probability + risk level
-        """)
+XGBoost Classifier  
+30 features used  
+Detects fraud using transaction patterns  
+Outputs probability + risk level
+""")
+
+    # =====================================================
+    # 🆕 DATA EXPLANATION BUTTON (ADDED ONLY)
+    # =====================================================
+    if st.button("Data Information"):
+        st.info("""
+Credit Card Fraud Dataset:
+
+- Real-world anonymized transaction data  
+- Total features: 30  
+- Amount → transaction value  
+- Time → transaction timestamp  
+- V1–V28 → PCA transformed security features  
+
+Why PCA features?
+- Original banking data is sensitive  
+- PCA hides identity but keeps patterns  
+- Helps detect fraud without exposing private data  
+
+Dataset nature:
+- Highly imbalanced (very few fraud cases)  
+- Requires anomaly detection approach  
+""")
 
 # =========================================================
 # SINGLE PREDICTION
@@ -154,9 +166,8 @@ elif menu == "Single Prediction":
 
     st.header("Transaction Analysis")
 
-    # ONLY ONE DEMO BUTTON (kept)
     if st.button("Load Demo Transaction"):
-        st.session_state.demo = demo_medium()
+        st.session_state.demo = demo_sample()
 
     if "demo" not in st.session_state:
         st.session_state.demo = [0]*30
@@ -207,7 +218,7 @@ elif menu == "Single Prediction":
             st.plotly_chart(fig, use_container_width=True)
 
 # =========================================================
-# BATCH PROCESSING (UPDATED ONLY HERE)
+# BATCH PROCESSING (UNCHANGED)
 # =========================================================
 elif menu == "Batch Processing":
 
@@ -226,13 +237,11 @@ elif menu == "Batch Processing":
             st.error("Dataset must have exactly 30 features")
             st.stop()
 
-        # ================= NEW: SESSION STATE CONTROL =================
         if "batch_df" not in st.session_state:
             st.session_state.batch_df = df
 
         colA, colB = st.columns(2)
 
-        # ================= RANDOM 1500 SAMPLE =================
         with colA:
             if st.button("Random 1500 Records"):
                 st.session_state.batch_df = df.sample(
@@ -240,7 +249,6 @@ elif menu == "Batch Processing":
                     random_state=np.random.randint(0, 9999)
                 )
 
-        # ================= REFRESH SAMPLE =================
         with colB:
             if st.button("Refresh Sample"):
                 st.session_state.batch_df = df.sample(
